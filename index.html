@@ -276,7 +276,7 @@ tbody tr:last-child td{border-bottom:none}
 // ============================================================
 // CONFIG & USERS
 // ============================================================
-var GAS_URL = 'https://script.google.com/macros/s/AKfycby9iW9o-rYPwWEjDaOZX4_Wov9EE00nQDCHnpnc0ek3FGtANf-itsVxBEtgFcKcOzeFpQ/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzoSVXSpuQ8KbpSIATIKdATJEBOY3hehzswIAMDc4NSCYMPqa-ujylsM5aAeeCdX9z2/exec';
 
 var USERS = [
   {username:'admin',   password:'admin123', hoTen:'Quản trị viên',   role:'admin',    khois:[], isAdmin:true},
@@ -513,24 +513,70 @@ function canEdit(field) {
 function doLogin() {
   var u = document.getElementById('lgUser').value.trim();
   var p = document.getElementById('lgPass').value;
-  var found = USERS.find(function(x){ return x.username===u && x.password===p; });
-  if (!found) { document.getElementById('lgErr').textContent = 'Sai tên đăng nhập hoặc mật khẩu'; return; }
-  CU = found;
-  initUserPerms(); // khởi tạo phân quyền chi tiết
-  document.getElementById('loginPage').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('uAvatar').textContent = found.hoTen[0];
-  document.getElementById('uName').textContent = found.hoTen;
-  document.getElementById('uRole').textContent = ROLE_LABELS[found.role] || found.role;
+  var errEl = document.getElementById('lgErr');
+  if (!u || !p) { errEl.textContent = 'Vui lòng nhập tên đăng nhập và mật khẩu'; return; }
+  errEl.textContent = 'Đang đăng nhập...';
+  var btn = document.querySelector('.btn-login');
+  if (btn) btn.disabled = true;
 
-  // Admin/truong → dashboard đầy đủ; user thường → cổng nhập liệu
-  if (found.role === 'admin' || found.role === 'truong') {
-    buildSidebar();
-    loadData();
-  } else {
-    buildSidebarDataEntry();
-    renderDataEntry();
-  }
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'login', username: u, password: p })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (btn) btn.disabled = false;
+    if (!res.ok) { errEl.textContent = res.msg || 'Sai tên đăng nhập hoặc mật khẩu'; return; }
+    var found = res.user;
+    // Merge vào USERS local để các hàm khác dùng được
+    var existing = USERS.find(function(x){ return x.username===found.username; });
+    if (!existing) USERS.push(found);
+    else Object.assign(existing, found);
+    CU = USERS.find(function(x){ return x.username===found.username; }) || found;
+    // Khởi tạo USER_PERMS từ data GAS trả về
+    var existPerm = USER_PERMS.find(function(p){ return p.username===found.username; });
+    if (!existPerm) USER_PERMS.push({ username: found.username, areas: found.areas||[], congTys: found.congTys||[] });
+    initUserPerms();
+    errEl.textContent = '';
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uAvatar').textContent = found.hoTen[0];
+    document.getElementById('uName').textContent = found.hoTen;
+    document.getElementById('uRole').textContent = ROLE_LABELS[found.role] || found.role;
+    if (found.role === 'admin' || found.role === 'truong') {
+      // Load tất cả users từ GAS
+      fetch(GAS_URL + '?action=getUsers')
+        .then(function(r){ return r.json(); })
+        .then(function(users) {
+          if (Array.isArray(users)) {
+            localUsers.length = 0;
+            USERS.length = 0;
+            users.forEach(function(x){ localUsers.push(x); USERS.push(x); });
+          }
+          buildSidebar();
+          loadData();
+        }).catch(function(){ buildSidebar(); loadData(); });
+    } else {
+      buildSidebarDataEntry();
+      renderDataEntry();
+    }
+  })
+  .catch(function(err) {
+    if (btn) btn.disabled = false;
+    // Fallback: thử đăng nhập offline với USERS mặc định
+    var found = USERS.find(function(x){ return x.username===u && x.password===p; });
+    if (!found) { errEl.textContent = 'Không kết nối được server. Vui lòng thử lại.'; return; }
+    CU = found;
+    initUserPerms();
+    errEl.textContent = '';
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uAvatar').textContent = found.hoTen[0];
+    document.getElementById('uName').textContent = found.hoTen;
+    document.getElementById('uRole').textContent = ROLE_LABELS[found.role] || found.role;
+    if (found.role === 'admin' || found.role === 'truong') { buildSidebar(); loadData(); }
+    else { buildSidebarDataEntry(); renderDataEntry(); }
+  });
 }
 function doLogout() {
   CU = null; DATA = []; FDATA = [];
@@ -2280,26 +2326,43 @@ function saveUser() {
     isAdmin: role === 'admin'
   };
   if (!u.username||!u.password||!u.hoTen) { showToast('Vui lòng điền đầy đủ thông tin','error'); return; }
-  if (editUserIdx !== null) localUsers[editUserIdx] = u;
-  else {
-    // Không cho trùng username
-    if (USERS.find(function(x){ return x.username===u.username; })) {
-      showToast('Username đã tồn tại','error'); return;
-    }
-    localUsers.push(u);
-  }
-  // Sync to USERS array + localStorage
-  USERS.length = 0;
-  localUsers.forEach(function(x){ USERS.push(x); });
-  lsSave(LS_USERS_KEY, localUsers);
-  // Cập nhật USER_PERMS ngay
-  var existPerm = USER_PERMS.find(function(p){ return p.username===u.username; });
-  if (existPerm) { existPerm.areas = mangCV; existPerm.congTys = congTys; }
-  else USER_PERMS.push({ username: u.username, areas: mangCV, congTys: congTys });
-  lsSave(LS_PERMS_KEY, USER_PERMS);
-  closeModal('modalUser');
-  renderUserList();
-  showToast('Đã lưu tài khoản','success');
+
+  var action = (editUserIdx !== null) ? 'updateUser' : 'addUser';
+  showToast('Đang lưu...','info');
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: action, data: u, username: u.username })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (!res.ok) { showToast(res.msg || 'Lỗi lưu tài khoản','error'); return; }
+    // Cập nhật local
+    if (editUserIdx !== null) localUsers[editUserIdx] = u;
+    else localUsers.push(u);
+    USERS.length = 0;
+    localUsers.forEach(function(x){ USERS.push(x); });
+    var existPerm = USER_PERMS.find(function(p){ return p.username===u.username; });
+    if (existPerm) { existPerm.areas = mangCV; existPerm.congTys = congTys; }
+    else USER_PERMS.push({ username: u.username, areas: mangCV, congTys: congTys });
+    closeModal('modalUser');
+    renderUserList();
+    showToast('Đã lưu tài khoản','success');
+  })
+  .catch(function() {
+    // Fallback: lưu local
+    if (editUserIdx !== null) localUsers[editUserIdx] = u;
+    else localUsers.push(u);
+    USERS.length = 0;
+    localUsers.forEach(function(x){ USERS.push(x); });
+    lsSave(LS_USERS_KEY, localUsers);
+    var existPerm = USER_PERMS.find(function(p){ return p.username===u.username; });
+    if (existPerm) { existPerm.areas = mangCV; existPerm.congTys = congTys; }
+    else USER_PERMS.push({ username: u.username, areas: mangCV, congTys: congTys });
+    lsSave(LS_PERMS_KEY, USER_PERMS);
+    closeModal('modalUser');
+    renderUserList();
+    showToast('Đã lưu (offline)','info');
+  });
 }
 function deleteUser(idx) {
   var u = localUsers[idx];
@@ -2316,12 +2379,29 @@ function deleteUser(idx) {
 }
 function confirmDeleteUser(idx) {
   if (document.getElementById('deleteConfirmBar')) document.getElementById('deleteConfirmBar').remove();
-  localUsers.splice(idx,1);
-  USERS.length = 0;
-  localUsers.forEach(function(x){ USERS.push(x); });
-  lsSave(LS_USERS_KEY, localUsers);
-  renderUserList();
-  showToast('Đã xóa tài khoản','success');
+  var u = localUsers[idx];
+  if (!u) return;
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'deleteUser', username: u.username })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (!res.ok) { showToast(res.msg || 'Lỗi xóa tài khoản','error'); return; }
+    localUsers.splice(idx,1);
+    USERS.length = 0;
+    localUsers.forEach(function(x){ USERS.push(x); });
+    renderUserList();
+    showToast('Đã xóa tài khoản','success');
+  })
+  .catch(function() {
+    localUsers.splice(idx,1);
+    USERS.length = 0;
+    localUsers.forEach(function(x){ USERS.push(x); });
+    lsSave(LS_USERS_KEY, localUsers);
+    renderUserList();
+    showToast('Đã xóa (offline)','info');
+  });
 }
 
 // ============================================================

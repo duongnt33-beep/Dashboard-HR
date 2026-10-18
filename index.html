@@ -691,8 +691,9 @@ function applyFilters() {
     return true;
   });
 }
-function getActive() { return DATA.filter(function(r){ return r.trangThai!=='Nghỉ việc'&&r.trangThai!=='Đã thôi việc'; }); }
-function getResigned() { return DATA.filter(function(r){ return r.trangThai==='Nghỉ việc'||r.trangThai==='Đã thôi việc'; }); }
+function isResigned(r) { var s=r.trangThai||''; return s==='Nghỉ việc'||s==='Đã thôi việc'||s==='Đã nghỉ việc'||s==='Thôi việc'; }
+function getActive() { return DATA.filter(function(r){ return !isResigned(r); }); }
+function getResigned() { return DATA.filter(function(r){ return isResigned(r); }); }
 function getExpire() {
   var today = new Date();
   return DATA.filter(function(r){
@@ -879,8 +880,8 @@ function mkChart(id, cfg) {
 var ORANGE_PALETTE = ['#F97316','#FB923C','#FDBA74','#FED7AA','#FFF7ED','#EA580C','#C2410C','#9A3412'];
 var MULTI_PALETTE = ['#F97316','#3B82F6','#10B981','#8B5CF6','#EF4444','#F59E0B','#06B6D4','#84CC16'];
 
-function getFDataActive() { return FDATA.filter(function(r){ return r.trangThai!=='Nghỉ việc'&&r.trangThai!=='Đã thôi việc'; }); }
-function getFDataResigned() { return FDATA.filter(function(r){ return r.trangThai==='Nghỉ việc'||r.trangThai==='Đã thôi việc'; }); }
+function getFDataActive() { return FDATA.filter(function(r){ return !isResigned(r); }); }
+function getFDataResigned() { return FDATA.filter(function(r){ return isResigned(r); }); }
 function getFDataExpire() {
   var today = new Date();
   return FDATA.filter(function(r){

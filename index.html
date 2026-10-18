@@ -660,19 +660,19 @@ function loadData() {
     return;
   }
   showLoading('Đang tải dữ liệu...');
-  fetch(GAS_URL + '?action=default', {method:'GET'})
+  fetch(GAS_URL + '?action=getData', {method:'GET'})
     .then(function(r){ return r.json(); })
     .then(function(d) {
       hideLoading();
-      if (d.error) { showToast('Lỗi: '+d.error,'error'); DATA = getSampleData(); }
-      else { DATA = d.nv || []; }
+      if (d.ok && Array.isArray(d.data)) { DATA = d.data; }
+      else { DATA = []; }
       applyFilters();
       navTo(curModule);
     })
     .catch(function(e) {
       hideLoading();
-      showToast('Không kết nối được GAS. Dùng dữ liệu mẫu.','error');
-      DATA = getSampleData();
+      showToast('Không kết nối được GAS. Vui lòng thử lại.','error');
+      DATA = [];
       applyFilters();
       navTo(curModule);
     });

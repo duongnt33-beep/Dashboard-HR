@@ -276,7 +276,7 @@ tbody tr:last-child td{border-bottom:none}
 // ============================================================
 // CONFIG & USERS
 // ============================================================
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbzoSVXSpuQ8KbpSIATIKdATJEBOY3hehzswIAMDc4NSCYMPqa-ujylsM5aAeeCdX9z2/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyzE3sHDKnrbFmaU2jJ4hd8dN8zLUb08FUdP07Kojf0NG1zgrEMGpPqEze3bObtUQ0i/exec';
 
 var USERS = [
   {username:'admin',   password:'admin123', hoTen:'Quản trị viên',   role:'admin',    khois:[], isAdmin:true},
@@ -2953,7 +2953,7 @@ function submitImportRows(pending) {
       body: JSON.stringify({ action: 'addRow', sheet: memberSheet, data: data })
     }).then(function(r){ return r.json(); })
     .then(function(resp){
-      if (resp.status === 'ok') {
+      if (resp.status === 'ok' || resp.ok === true) {
         sent++;
         addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'ok' });
       } else { failed++; }

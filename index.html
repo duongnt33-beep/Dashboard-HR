@@ -664,7 +664,7 @@ function loadData() {
     .then(function(r){ return r.json(); })
     .then(function(d) {
       hideLoading();
-      if (d.ok && Array.isArray(d.data)) { DATA = d.data; }
+      if (d.ok && Array.isArray(d.data)) { DATA = d.data.map(mapVietHeaders); }
       else { DATA = []; }
       applyFilters();
       navTo(curModule);

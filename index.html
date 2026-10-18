@@ -276,7 +276,7 @@ tbody tr:last-child td{border-bottom:none}
 // ============================================================
 // CONFIG & USERS
 // ============================================================
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbyzE3sHDKnrbFmaU2jJ4hd8dN8zLUb08FUdP07Kojf0NG1zgrEMGpPqEze3bObtUQ0i/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzhMTC0eZQW8LzTeASaL4cm4i332GkP-UL7MNTv7Z63PU266hMY6epL2IdNsv3aiDZy/exec';
 
 var USERS = [
   {username:'admin',   password:'admin123', hoTen:'Quản trị viên',   role:'admin',    khois:[], isAdmin:true},
@@ -2828,7 +2828,7 @@ function doImportExcel(file, statusEl) {
 
       var pc = document.getElementById('pageContent');
       var area = pc ? pc.dataset.curArea : getMyAreas()[0];
-      var memberSheet = CU.sheet || CU.username;
+      var memberSheet = 'Data';
       var myCongTys = getMyCongTys();
 
       // Normalize header keys: bỏ (*), khoảng trắng thừa
@@ -3051,8 +3051,7 @@ function submitDataEntry() {
   });
   if (!valid) return;
 
-  // Tìm đúng sheet của user (tên thành viên)
-  var memberSheet = CU.sheet || CU.username; // admin có thể set u.sheet khi tạo user
+  var memberSheet = 'Data';
 
   var payload = {
     action: 'addRow',

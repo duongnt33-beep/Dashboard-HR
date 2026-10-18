@@ -276,7 +276,7 @@ tbody tr:last-child td{border-bottom:none}
 // ============================================================
 // CONFIG & USERS
 // ============================================================
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbzhMTC0eZQW8LzTeASaL4cm4i332GkP-UL7MNTv7Z63PU266hMY6epL2IdNsv3aiDZy/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbweIfyyk5GveJkwfIW2Yjwz5jjrQGAgEV8zCwAJmQBMJv2EdnDhehXzytJuTzDe3Gtv/exec';
 
 var USERS = [
   {username:'admin',   password:'admin123', hoTen:'Quản trị viên',   role:'admin',    khois:[], isAdmin:true},
@@ -2924,48 +2924,44 @@ function submitImportRows(pending) {
   statusEl.innerHTML = '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;font-size:13px;color:#1D4ED8">'+
     '⏳ Đang gửi <b>'+rows.length+'</b> dòng lên Google Sheets...</div>';
 
-  var sent = 0, failed = 0, total = rows.length;
-
-  function sendNext(i) {
-    if (i >= total) {
-      var msg = '✅ Đã gửi <b>'+(total-failed)+'</b>/'+total+' dòng thành công';
-      if (failed) msg += ' · <span style="color:#EF4444">'+failed+' lỗi</span>';
-      statusEl.innerHTML = '<div style="background:'+(failed?'#FEF3C7':'#F0FDF4')+';border:1px solid '+(failed?'#FCD34D':'#BBF7D0')+';border-radius:8px;padding:12px;font-size:13px">'+msg+'</div>';
-      window.importPendingRows = null;
-      return;
-    }
-    var r = rows[i];
-    // Convert Date objects to string
+  // Chuẩn bị tất cả rows
+  var allData = rows.map(function(r) {
     var data = {};
     Object.keys(r).forEach(function(k){
       var v = r[k];
       if (v instanceof Date) v = v.toLocaleDateString('vi-VN');
       data[k] = String(v||'').trim();
     });
-    // Map 'Công ty' vào đúng field
     if (data['Công ty'] && !data['Công ty đang làm việc hiện tại']) {
       data['Công ty đang làm việc hiện tại'] = data['Công ty'];
     }
+    return data;
+  });
 
-    fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'addRow', sheet: memberSheet, data: data })
-    }).then(function(r){ return r.json(); })
-    .then(function(resp){
-      if (resp.status === 'ok' || resp.ok === true) {
-        sent++;
+  // Gửi 1 request batch thay vì từng dòng
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'batchAddRows', sheet: memberSheet, rows: allData })
+  }).then(function(r){ return r.json(); })
+  .then(function(resp){
+    var inserted = resp.inserted || allData.length;
+    var failed = resp.failed || 0;
+    if (resp.ok) {
+      allData.forEach(function(data){
         addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'ok' });
-      } else { failed++; }
-      statusEl.innerHTML = '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px;font-size:13px;color:#1D4ED8">⏳ Đang gửi... '+( i+1)+'/'+total+'</div>';
-      sendNext(i + 1);
-    }).catch(function(){
-      // Lưu tạm nếu lỗi mạng
+      });
+    }
+    var msg = '✅ Đã gửi <b>'+inserted+'</b>/'+allData.length+' dòng thành công';
+    if (failed) msg += ' · <span style="color:#EF4444">'+failed+' lỗi</span>';
+    statusEl.innerHTML = '<div style="background:'+(failed?'#FEF3C7':'#F0FDF4')+';border:1px solid '+(failed?'#FCD34D':'#BBF7D0')+';border-radius:8px;padding:12px;font-size:13px">'+msg+'</div>';
+    window.importPendingRows = null;
+  }).catch(function(){
+    allData.forEach(function(data){
       addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'pending', data: data, sheet: memberSheet });
-      failed++;
-      sendNext(i + 1);
     });
-  }
-  sendNext(0);
+    statusEl.innerHTML = '<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px;font-size:13px">⚠️ Lỗi mạng — đã lưu tạm, sẽ gửi lại sau.</div>';
+    window.importPendingRows = null;
+  });
 }
 
 function renderDeFields(area) {

@@ -1740,7 +1740,7 @@ function handleExcelFileRaw(file) {
         }
       }
       if (headerRow < 0) { hideLoading(); showToast('Không tìm thấy dòng tiêu đề trong file','error'); return; }
-      var headers = raw[headerRow].map(function(h){ return (h||'').toString().trim(); });
+      var headers = raw[headerRow].map(function(h){ return (h||'').toString().trim().replace(/\s*\(\*\)\s*$/,''); });
       importRows = [];
       for (var j = headerRow+1; j < raw.length; j++) {
         var row = raw[j];

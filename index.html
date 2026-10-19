@@ -1752,6 +1752,14 @@ function handleExcelFileRaw(file) {
         });
         // Map Vietnamese headers to field keys
         var mapped = mapVietHeaders(obj);
+        // Tự động tính Trạng thái nếu chưa có hoặc để trống
+        if (!mapped.trangThai || mapped.trangThai === '') {
+          if (mapped.ngayThoiViecThucTe && mapped.ngayThoiViecThucTe !== '') {
+            mapped.trangThai = 'Đã nghỉ việc';
+          } else {
+            mapped.trangThai = 'Đang làm';
+          }
+        }
         if (mapped.maNV || mapped.hoTen) importRows.push(mapped);
       }
       hideLoading();

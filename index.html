@@ -1740,7 +1740,7 @@ function handleExcelFileRaw(file) {
         }
       }
       if (headerRow < 0) { hideLoading(); showToast('Không tìm thấy dòng tiêu đề trong file','error'); return; }
-      var headers = raw[headerRow].map(function(h){ return (h||'').toString().trim().replace(/\s*\(\*\)\s*$/,''); });
+      var headers = raw[headerRow].map(function(h){ return (h||'').toString().trim().replace(/\s*\(\*\)\s*$/,'').replace(/\s*\(tự động\)\s*$/,''); });
       importRows = [];
       for (var j = headerRow+1; j < raw.length; j++) {
         var row = raw[j];
@@ -1758,6 +1758,26 @@ function handleExcelFileRaw(file) {
             mapped.trangThai = 'Đã nghỉ việc';
           } else {
             mapped.trangThai = 'Đang làm';
+          }
+        }
+        // Tự động tính Tháng thôi việc và Năm thôi việc từ Ngày thôi việc thực tế
+        if (mapped.ngayThoiViecThucTe && mapped.ngayThoiViecThucTe !== '') {
+          var dtv = mapped.ngayThoiViecThucTe;
+          var dObj = null;
+          // Thử parse dd/mm/yyyy hoặc yyyy-mm-dd hoặc Excel serial
+          if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dtv)) {
+            var p = dtv.split('/'); dObj = new Date(+p[2], +p[1]-1, +p[0]);
+          } else if (/^\d{4}-\d{2}-\d{2}/.test(dtv)) {
+            dObj = new Date(dtv);
+          } else if (!isNaN(+dtv) && +dtv > 1000) {
+            // Excel serial date
+            dObj = new Date(Math.round((+dtv - 25569) * 86400 * 1000));
+          }
+          if (dObj && !isNaN(dObj.getTime())) {
+            if (!mapped.thangThoiViec || mapped.thangThoiViec === '')
+              mapped.thangThoiViec = String(dObj.getMonth() + 1);
+            if (!mapped.namThoiViec || mapped.namThoiViec === '')
+              mapped.namThoiViec = String(dObj.getFullYear());
           }
         }
         if (mapped.maNV || mapped.hoTen) importRows.push(mapped);
@@ -2724,7 +2744,6 @@ function downloadTemplate() {
 
   var headerRow = ws.addRow(areaCols.map(function(h) {
     if (requiredCols.indexOf(h) >= 0) return h + ' (*)';
-    if (autoCols.indexOf(h) >= 0) return h + ' (tự động)';
     return h;
   }));
   headerRow.height = 40;
@@ -2835,11 +2854,11 @@ function doImportExcel(file, statusEl) {
 
       // Normalize header keys: bỏ (*), khoảng trắng thừa
       var firstRow = rows[0];
-      var normalizedKeys = Object.keys(firstRow).map(function(k){ return k.replace(/\s*\(\*\)\s*/g,'').trim(); });
+      var normalizedKeys = Object.keys(firstRow).map(function(k){ return k.replace(/\s*\(\*\)\s*/g,'').replace(/\s*\(tự động\)\s*/g,'').trim(); });
       rows = rows.map(function(r) {
         var newR = {};
         Object.keys(r).forEach(function(k) {
-          var nk = k.replace(/\s*\(\*\)\s*/g,'').trim();
+          var nk = k.replace(/\s*\(\*\)\s*/g,'').replace(/\s*\(tự động\)\s*/g,'').trim();
           newR[nk] = r[k];
         });
         return newR;

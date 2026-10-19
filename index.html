@@ -1729,7 +1729,9 @@ function handleExcelFileRaw(file) {
   reader.onload = function(e) {
     try {
       var wb = XLSX.read(e.target.result, {type:'array',cellDates:true});
-      var ws = wb.Sheets[wb.SheetNames[0]];
+      // Ưu tiên đọc sheet "Dữ liệu", nếu không có thì đọc sheet đầu tiên
+      var dataSheetName2 = wb.SheetNames.find(function(n){ return n.trim() === 'Dữ liệu'; }) || wb.SheetNames[0];
+      var ws = wb.Sheets[dataSheetName2];
       var raw = XLSX.utils.sheet_to_json(ws, {header:1,raw:false,dateNF:'dd/mm/yyyy'});
       // Tìm dòng header (có Mã NV hoặc Họ và tên)
       var headerRow = -1;
@@ -2839,7 +2841,9 @@ function doImportExcel(file, statusEl) {
   reader.onload = function(e) {
     try {
       var wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
-      var ws = wb.Sheets[wb.SheetNames[0]];
+      // Ưu tiên đọc sheet "Dữ liệu", nếu không có thì đọc sheet đầu tiên
+      var dataSheetName = wb.SheetNames.find(function(n){ return n.trim() === 'Dữ liệu'; }) || wb.SheetNames[0];
+      var ws = wb.Sheets[dataSheetName];
       var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
       if (!rows.length) {

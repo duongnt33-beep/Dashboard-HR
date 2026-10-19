@@ -2647,12 +2647,18 @@ var ALL_94_COLS = [
 
 // Map mảng → các cột cần nhập (highlight đỏ)
 var AREA_COL_MAP = {
-  'Hồ sơ nhân viên': ['Mã NV','Họ và tên','Trạng thái','Chức danh','Chức vụ','Phòng Ban','Khối','Ngày vào gốc','Điện thoại','Ngày, tháng, năm sinh','Giới tính','Số CMND/CCCD','Email cá nhân','Trình độ học vấn','NOTE '],
-  'Hợp đồng': ['Mã NV','Họ và tên','Loại HĐ','Ngày ký HĐLĐ L1','Ngày Hết Hạn HĐLĐ L1','Ngày ký HĐLĐ L2','Ngày Hết Hạn HĐLĐ L2','Ngày ký HĐLĐ L3','Ngày ký HĐ Hiện tại','Check HĐ','Ghi chú'],
-  'Thôi việc': ['Mã NV','Họ và tên','Ngày thôi việc thực tế','Tháng thôi việc','Năm thôi việc','Lý do thôi việc','ĐƠN THÔI VIỆC','BIÊN BẢN BÀN GIAO','Trạng thái\n(phụ)','Ghi chú'],
-  'Lương': ['Mã NV','Họ và tên','Số tài khoản','Ngân hàng','Chi nhánh','Mã số thuế TNCN','NOTE '],
-  'Bảo hiểm': ['Mã NV','Họ và tên','Mã số BHXH (Nếu có)','Công Đoàn','Ngày tham gia Công đoàn','Ngày kết thúc tham gia Công đoàn','NOTE '],
-  'Thuế TNCN': ['Mã NV','Họ và tên','Mã số thuế TNCN','Tình trạng \nhôn nhân','Họ&Tên Vợ/Chồng','Năm Sinh','NOTE '],
+  'Hồ sơ nhân viên': ['Mã NV','Họ và tên','Chức danh','Chức vụ','Level','Phòng Ban','Khối',
+    'Công ty đang làm việc hiện tại','Bộ phận làm việc','Khu vực',
+    'Ngày vào gốc','Ngày ký HĐLĐ L1','Loại HĐ','Ngày thôi việc thực tế',
+    'Tháng thôi việc','Năm thôi việc','Lý do thôi việc',
+    'Ngày, tháng, năm sinh','Tuổi','Giới tính','Trình độ học vấn','Chuyên ngành',
+    'Mức lương thỏa thuận','Mức tham gia BHXH','Mức tham gia BHTN'],
+  'Hợp đồng': ['Mã NV','Họ và tên','Ngày ký HĐLĐ L1','Loại HĐ'],
+  'Thôi việc': ['Mã NV','Họ và tên','Ngày thôi việc thực tế','Tháng thôi việc',
+    'Năm thôi việc','Lý do thôi việc','ĐƠN THÔI VIỆC'],
+  'Lương': ['Mã NV','Họ và tên','Mức lương thỏa thuận','Mức tham gia BHXH','Mức tham gia BHTN'],
+  'Bảo hiểm': ['Mã NV','Họ và tên','Mức tham gia BHXH','Mức tham gia BHTN'],
+  'Thuế TNCN': ['Mã NV','Họ và tên','Mức lương thỏa thuận','Thuế TNCN','Số người phụ thuộc'],
 };
 
 // Cột bắt buộc theo mảng
@@ -2669,9 +2675,8 @@ function downloadTemplate() {
   var pc = document.getElementById('pageContent');
   var area = (pc && pc.dataset.curArea) ? pc.dataset.curArea : getMyAreas()[0];
   var myCongTys = getMyCongTys();
-  var fname = 'Template_' + (area||'HR').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  var fname = 'Template_' + (area||'HR').replace(/\s+/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.xlsx';
 
-  // Load ExcelJS nếu chưa có (hỗ trợ style đầy đủ)
   if (typeof ExcelJS === 'undefined') {
     showToast('Đang tải thư viện, vui lòng đợi...', 'info');
     var s = document.createElement('script');
@@ -2681,102 +2686,84 @@ function downloadTemplate() {
     return;
   }
 
-  // 1 template chung cho tất cả mảng — highlight tất cả cột của các mảng user được phân quyền
-  var myAreas = getMyAreas();
-  var allHeaders = ALL_94_COLS.concat(['Mức lương thỏa thuận','Mức tham gia BHXH','Mức tham gia BHTN']);
-  // Gộp tất cả cột của các mảng user được phân quyền
-  var areaCols = [];
-  myAreas.forEach(function(a) {
-    (AREA_COL_MAP[a] || []).forEach(function(c) { if (areaCols.indexOf(c) < 0) areaCols.push(c); });
-  });
-  areaCols = areaCols.concat(['Mức lương thỏa thuận','Mức tham gia BHXH','Mức tham gia BHTN']);
+  // Lấy đúng cột theo mảng hiện tại từ AREA_COL_MAP
+  var areaCols = (AREA_COL_MAP[area] || []).slice();
+  if (areaCols.length === 0) {
+    // fallback: gộp tất cả mảng user được phân quyền
+    getMyAreas().forEach(function(a) {
+      (AREA_COL_MAP[a] || []).forEach(function(c) { if (areaCols.indexOf(c) < 0) areaCols.push(c); });
+    });
+  }
+
   var requiredCols = ['Mã NV','Họ và tên'];
-  var alwaysHighlight = ['Công ty đang làm việc hiện tại'];
+  var autoCols = ['Ngày thôi việc thực tế']; // tự động tính Trạng thái khi import
 
   var wb = new ExcelJS.Workbook();
-  var ws = wb.addWorksheet('Dữ liệu');
-
-  ws.columns = allHeaders.map(function(h) {
-    return { width: Math.max(h.length + 4, 14) };
-  });
-
-  var headerRow = ws.addRow(allHeaders.map(function(h) {
-    if (requiredCols.indexOf(h) >= 0 || alwaysHighlight.indexOf(h) >= 0) return h + ' (*)';
-    return h;
-  }));
-  headerRow.height = 36;
-
-  headerRow.eachCell(function(cell, colNumber) {
-    var h = allHeaders[colNumber - 1];
-    var isArea = (alwaysHighlight.indexOf(h) >= 0) || (areaCols.indexOf(h) >= 0);
-    cell.fill = {
-      type: 'pattern', pattern: 'solid',
-      fgColor: { argb: isArea ? 'FFFFD700' : 'FFF2F2F2' }
-    };
-    cell.font = {
-      bold: true,
-      color: { argb: isArea ? 'FF7B4F00' : 'FF999999' },
-      size: 10
-    };
-    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    cell.border = {
-      top:{style:'thin',color:{argb:'FFCCCCCC'}}, bottom:{style:'thin',color:{argb:'FFCCCCCC'}},
-      left:{style:'thin',color:{argb:'FFCCCCCC'}}, right:{style:'thin',color:{argb:'FFCCCCCC'}}
-    };
-  });
-
-  // 3 dòng trống mẫu
-  for (var i = 0; i < 3; i++) {
-    var rowData = allHeaders.map(function(h) {
-      if (h === 'Công ty đang làm việc hiện tại') return myCongTys.length === 1 ? myCongTys[0] : '';
-      return '';
-    });
-    ws.addRow(rowData);
-  }
 
   // Sheet hướng dẫn
   var wsG = wb.addWorksheet('Hướng dẫn');
-  wsG.columns = [{ width: 100 }];
-  var guideLines = [
-    'HƯỚNG DẪN SỬ DỤNG TEMPLATE — Mảng: ' + area,
-    '',
-    '• Template gồm 94 cột chuẩn của hệ thống HR + 3 cột lương/BHXH/BHTN',
-    '• Cột BÔI VÀNG = cột bạn cần nhập liệu cho mảng "' + area + '"',
-    '• Cột màu xám = không cần nhập (do bộ phận khác phụ trách)',
-    '• Cột có dấu (*) = bắt buộc phải điền',
-    '• Cột "Công ty đang làm việc hiện tại": điền đúng tên công ty bạn phụ trách',
-    '',
-    'Các cột cần nhập (' + areaCols.length + ' cột):',
-    areaCols.join(', '),
-    '',
-    'Lưu file .xlsx rồi dùng nút "Import file Excel" để nộp dữ liệu',
-  ];
-  guideLines.forEach(function(line, idx) {
-    var r = wsG.addRow([line]);
-    if (idx === 0) { r.getCell(1).font = { bold:true, size:13, color:{argb:'FFCC0000'} }; }
+  wsG.columns = [{ width: 70 }];
+  [
+    ['HƯỚNG DẪN SỬ DỤNG TEMPLATE — Mảng: ' + area, true],
+    ['', false],
+    ['⭐ Cột VÀNG (dấu *) = Bắt buộc phải điền', false],
+    ['🔄 Cột XANH LÁ = Không cần điền, hệ thống tự tính Trạng thái khi import', false],
+    ['📋 Cột XANH DƯƠNG = Tuỳ chọn, điền nếu có', false],
+    ['', false],
+    ['Tổng: ' + areaCols.length + ' cột | Lưu file .xlsx → Import file Excel để nộp dữ liệu', false],
+  ].forEach(function(item) {
+    var r = wsG.addRow([item[0]]);
+    if (item[1]) r.getCell(1).font = { bold:true, size:13, color:{argb:'FFCC0000'} };
   });
+
+  // Sheet dữ liệu
+  var ws = wb.addWorksheet('Dữ liệu');
+  ws.columns = areaCols.map(function(h) {
+    return { width: Math.max(h.length + 4, 16) };
+  });
+
+  var headerRow = ws.addRow(areaCols.map(function(h) {
+    if (requiredCols.indexOf(h) >= 0) return h + ' (*)';
+    if (autoCols.indexOf(h) >= 0) return h + ' (tự động)';
+    return h;
+  }));
+  headerRow.height = 40;
+
+  headerRow.eachCell(function(cell, colNumber) {
+    var h = areaCols[colNumber - 1];
+    var argb, fontArgb;
+    if (requiredCols.indexOf(h) >= 0)   { argb = 'FFFFD700'; fontArgb = 'FF7B4F00'; } // vàng bắt buộc
+    else if (autoCols.indexOf(h) >= 0)  { argb = 'FF90EE90'; fontArgb = 'FF1A5C2A'; } // xanh lá tự động
+    else                                { argb = 'FFADD8E6'; fontArgb = 'FF1A3D5C'; } // xanh dương tuỳ chọn
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:argb } };
+    cell.font = { bold:true, color:{ argb:fontArgb }, size:10 };
+    cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    cell.border = {
+      top:{style:'thin',color:{argb:'FFAAAAAA'}}, bottom:{style:'thin',color:{argb:'FFAAAAAA'}},
+      left:{style:'thin',color:{argb:'FFAAAAAA'}}, right:{style:'thin',color:{argb:'FFAAAAAA'}}
+    };
+  });
+
+  ws.views = [{ state:'frozen', ySplit:1 }];
+
+  // 5 dòng trống mẫu
+  for (var i = 0; i < 5; i++) {
+    var rowData = areaCols.map(function(h) {
+      if (h === 'Công ty đang làm việc hiện tại') return myCongTys.length === 1 ? myCongTys[0] : '';
+      return '';
+    });
+    var dr = ws.addRow(rowData);
+    dr.eachCell(function(cell) {
+      cell.border = {
+        top:{style:'thin',color:{argb:'FFCCCCCC'}}, bottom:{style:'thin',color:{argb:'FFCCCCCC'}},
+        left:{style:'thin',color:{argb:'FFCCCCCC'}}, right:{style:'thin',color:{argb:'FFCCCCCC'}}
+      };
+    });
+  }
 
   wb.xlsx.writeBuffer().then(function(buffer) {
     var blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-    // Dùng claude.use("downloads") nếu trong artifact iframe
-    if (window.claude && window.claude.use) {
-      window.claude.use('downloads').then(function(downloads) {
-        if (downloads) {
-          downloads.save({ filename: fname, data: blob }).then(function() {
-            showToast('Đã tải template: ' + fname, 'success');
-          }).catch(function() {
-            _fallbackDownload(blob, fname);
-          });
-        } else {
-          _fallbackDownload(blob, fname);
-        }
-      }).catch(function() {
-        _fallbackDownload(blob, fname);
-      });
-    } else {
-      _fallbackDownload(blob, fname);
-    }
+    _fallbackDownload(blob, fname);
   }).catch(function(err) {
     showToast('Lỗi tạo file: ' + (err&&err.message||err), 'error');
   });

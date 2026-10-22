@@ -544,18 +544,21 @@ function doLogin() {
     document.getElementById('uName').textContent = found.hoTen;
     document.getElementById('uRole').textContent = ROLE_LABELS[found.role] || found.role;
     if (found.role === 'admin' || found.role === 'truong') {
-      // Load tất cả users từ GAS
-      fetch(GAS_URL + '?action=getUsers')
-        .then(function(r){ return r.json(); })
-        .then(function(users) {
-          if (Array.isArray(users)) {
-            localUsers.length = 0;
-            USERS.length = 0;
-            users.forEach(function(x){ localUsers.push(x); USERS.push(x); });
-          }
-          buildSidebar();
-          loadData();
-        }).catch(function(){ buildSidebar(); loadData(); });
+      // Gộp getUsers + getData song song để giảm thời gian chờ
+      buildSidebar();
+      Promise.all([
+        fetch(GAS_URL + '?action=getUsers').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+        fetch(GAS_URL + '?action=getData').then(function(r){ return r.json(); }).catch(function(){ return null; })
+      ]).then(function(results) {
+        var users = results[0]; var dataRes = results[1];
+        if (Array.isArray(users)) {
+          localUsers.length = 0; USERS.length = 0;
+          users.forEach(function(x){ localUsers.push(x); USERS.push(x); });
+        }
+        if (dataRes && dataRes.ok && Array.isArray(dataRes.data)) { DATA = dataRes.data.map(mapVietHeaders); }
+        else { DATA = []; }
+        applyFilters(); navTo(curModule);
+      }).catch(function(){ buildSidebar(); loadData(); });
     } else {
       buildSidebarDataEntry();
       renderDataEntry();

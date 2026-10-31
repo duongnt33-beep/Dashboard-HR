@@ -1083,7 +1083,11 @@ function updateDashData() {
     renderChartEdu();
     renderChartResignKhoi();
     renderChartSalaryKhoi();
-    renderDashTab(0);
+    // Re-render tab đang active
+    var activeTab = document.querySelector('.tabs .tab.active');
+    var tabIdx = activeTab ? Array.from(document.querySelectorAll('.tabs .tab')).indexOf(activeTab) : 0;
+    var tabMap = [0,3,1,2];
+    renderDashTab(tabMap[tabIdx] !== undefined ? tabMap[tabIdx] : 0);
   }, 0);
 }
 
@@ -1123,11 +1127,11 @@ function renderDashTab(idx) {
   if (!cont) return;
   var khois = getKhois();
   if (idx === 0) {
-    // Theo khối
+    // Theo khối — dùng FDATA để phản ánh bộ lọc
     var rows = khois.map(function(k) {
-      var kdata = DATA.filter(function(r){ return r.khoi===k; });
-      var act = kdata.filter(function(r){ return r.trangThai==='Đang làm việc'||r.trangThai==='Thử việc'; });
-      var nghi = kdata.filter(function(r){ return r.trangThai==='Nghỉ việc'||r.trangThai==='Đã thôi việc'; });
+      var kdata = FDATA.filter(function(r){ return r.khoi===k; });
+      var act = kdata.filter(function(r){ return !isResigned(r); });
+      var nghi = kdata.filter(function(r){ return isResigned(r); });
       var luong = act.reduce(function(s,r){ return s+(parseFloat(r.tongThuNhap)||0); },0);
       return '<tr><td><b>'+esc(k)+'</b></td><td>'+kdata.length+'</td><td>'+act.length+'</td><td>'+nghi.length+'</td>'+
         '<td>'+(kdata.length?((nghi.length/kdata.length*100).toFixed(1))+'%':'—')+'</td>'+
@@ -1144,13 +1148,13 @@ function renderDashTab(idx) {
           '<td>'+esc(r.ngayThoiViecThucTe)+'</td><td>'+esc(r.lyDoThoiViec)+'</td></tr>';
       }).join('') : '<tr class="empty-row"><td colspan="6">Không có dữ liệu</td></tr>') + '</tbody></table></div>';
   } else if (idx === 3) {
-    // Theo công ty
-    var sysT = DATA.length;
+    // Theo công ty — dùng FDATA để phản ánh bộ lọc
+    var sysT = FDATA.length;
     var congTys = getCongTys();
     var rows3 = congTys.map(function(ct) {
-      var ctdata = DATA.filter(function(r){ return r.congTy===ct; });
-      var act3 = ctdata.filter(function(r){ return r.trangThai==='Đang làm việc'||r.trangThai==='Thử việc'; });
-      var nghi3 = ctdata.filter(function(r){ return r.trangThai==='Nghỉ việc'||r.trangThai==='Đã thôi việc'; });
+      var ctdata = FDATA.filter(function(r){ return r.congTy===ct; });
+      var act3 = ctdata.filter(function(r){ return !isResigned(r); });
+      var nghi3 = ctdata.filter(function(r){ return isResigned(r); });
       var pct3 = sysT > 0 ? ((ctdata.length/sysT*100).toFixed(1)) : '0.0';
       return '<tr><td><b>'+esc(ct)+'</b></td><td>'+ctdata.length+'</td><td class="text-orange"><b>'+pct3+'%</b></td><td>'+act3.length+'</td><td>'+nghi3.length+'</td>'+
         '<td>'+(ctdata.length?((nghi3.length/ctdata.length*100).toFixed(1))+'%':'—')+'</td></tr>';
@@ -1158,13 +1162,13 @@ function renderDashTab(idx) {
     cont.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Công ty</th><th>Tổng NV</th><th>% Toàn HT</th><th>Đang làm</th><th>Đã nghỉ</th><th>Tỷ lệ nghỉ</th></tr></thead><tbody>'+
       (rows3.length ? rows3.join('') : '<tr class="empty-row"><td colspan="6">Không có dữ liệu</td></tr>') + '</tbody></table></div>';
   } else {
-    // Quỹ lương
+    // Quỹ lương — dùng FDATA
     var rows2 = khois.map(function(k) {
-      var kdata = DATA.filter(function(r){ return r.khoi===k && r.trangThai==='Đang làm việc'; });
+      var kdata = FDATA.filter(function(r){ return r.khoi===k && !isResigned(r); });
       var cb = kdata.reduce(function(s,r){ return s+(parseFloat(r.luongCoBan)||0); },0);
       var tong = kdata.reduce(function(s,r){ return s+(parseFloat(r.tongThuNhap)||0); },0);
       var bhxh = kdata.reduce(function(s,r){ return s+(parseFloat(r.bhxhNLD)||0); },0);
-      var pctLuong = DATA.length > 0 ? ((kdata.length/DATA.length*100).toFixed(1)) : '0.0';
+      var pctLuong = FDATA.length > 0 ? ((kdata.length/FDATA.length*100).toFixed(1)) : '0.0';
       return '<tr><td><b>'+esc(k)+'</b></td><td>'+kdata.length+'</td><td class="text-orange">'+pctLuong+'%</td><td>'+fmtNum(Math.round(cb/1000000))+'tr</td>'+
         '<td>'+fmtNum(Math.round(tong/1000000))+'tr</td><td>'+fmtNum(Math.round(bhxh/1000000))+'tr</td></tr>';
     });
@@ -1187,13 +1191,17 @@ function renderChartTrend() {
   scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
 }
 function renderChartYearlyResign() {
-  var years = [2020,2021,2022,2023,2024,2025];
+  // Tự động lấy danh sách năm từ dữ liệu thực tế
+  var yearSet = {};
+  DATA.forEach(function(r){ var d=r.ngayThoiViecThucTe||r.namThoiViec||''; var y=r.namThoiViec?+r.namThoiViec:(d.split('/').length===3?+d.split('/')[2]:0); if(y>2000&&y<=new Date().getFullYear()+1) yearSet[y]=1; });
+  var years = Object.keys(yearSet).map(Number).sort();
+  if (!years.length) years = [2023,2024,2025,2026];
   var sysT = DATA.length||1;
-  var counts = years.map(function(y){ return FDATA.filter(function(r){ var d=r.ngayThoiViecThucTe||''; var p=d.split('/'); return p.length===3&&+p[2]===y; }).length; });
+  var counts = years.map(function(y){ return FDATA.filter(function(r){ var yy=r.namThoiViec?+r.namThoiViec:(function(){ var p=(r.ngayThoiViecThucTe||'').split('/'); return p.length===3?+p[2]:0; })(); return yy===y; }).length; });
   mkChart('chartYearlyResign',{type:'bar',data:{labels:years.map(String),datasets:[{label:'Số NV nghỉ',data:counts,backgroundColor:'#F97316',borderRadius:6}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
       tooltip:{callbacks:{label:function(ctx){ var pct=(ctx.parsed.y/sysT*100).toFixed(1); return ctx.parsed.y+' NV ('+pct+'% toàn HT)'; }}}},
-    scales:{y:{beginAtZero:true}}}});
+    scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
 }
 function renderChartKhoi() {
   var khois = getKhois();

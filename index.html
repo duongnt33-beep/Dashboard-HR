@@ -1932,10 +1932,10 @@ function doImport() {
     return;
   }
   var allItems = importRows.map(function(r){ r.nguoiNhap=CU.username; return r; });
-  var CHUNK2 = 50;
+  var CHUNK2 = 30;
   var chunks2 = [];
   for (var ci2 = 0; ci2 < allItems.length; ci2 += CHUNK2) chunks2.push(allItems.slice(ci2, ci2+CHUNK2));
-  var doneCount = 0, chunkIdx2 = 0;
+  var doneCount = 0, chunkIdx2 = 0, retryCount2 = 0;
   showLoading('Đang nhập '+allItems.length+' dòng (0/'+chunks2.length+' batch)...');
 
   function sendImportChunk() {
@@ -1948,15 +1948,31 @@ function doImport() {
       return;
     }
     var chunk2 = chunks2[chunkIdx2];
-    showLoading('Đang nhập batch '+(chunkIdx2+1)+'/'+chunks2.length+' ('+doneCount+'/'+allItems.length+' dòng)...');
+    var pct = Math.round(doneCount/allItems.length*100);
+    showLoading('Đang nhập... '+doneCount+'/'+allItems.length+' dòng ('+pct+'%) — batch '+(chunkIdx2+1)+'/'+chunks2.length);
     fetch(GAS_URL, {method:'POST', body:JSON.stringify({action:'batchImport', items: chunk2})})
       .then(function(r){ return r.json(); })
       .then(function(d) {
+        if (d.error && retryCount2 < 2) {
+          retryCount2++;
+          setTimeout(sendImportChunk, 2000);
+          return;
+        }
+        retryCount2 = 0;
         doneCount += (d.count || chunk2.length);
         chunkIdx2++;
-        sendImportChunk();
+        setTimeout(sendImportChunk, 500); // nghỉ 0.5s giữa các batch
       })
-      .catch(function(e){ hideLoading(); showToast('Lỗi batch '+(chunkIdx2+1)+': '+e.message,'error'); });
+      .catch(function(e){
+        if (retryCount2 < 2) {
+          retryCount2++;
+          showLoading('Lỗi mạng — thử lại batch '+(chunkIdx2+1)+' (lần '+retryCount2+')...');
+          setTimeout(sendImportChunk, 3000);
+        } else {
+          hideLoading();
+          showToast('Lỗi tại batch '+(chunkIdx2+1)+'/'+chunks2.length+' sau 3 lần thử: '+e.message,'error');
+        }
+      });
   }
   sendImportChunk();
 }
@@ -3139,11 +3155,11 @@ function submitImportRows(pending) {
     return data;
   });
 
-  // Chia nhỏ batch 50 rows để tránh GAS timeout
-  var CHUNK = 50;
+  // Chia nhỏ batch 30 rows để tránh GAS timeout
+  var CHUNK = 30;
   var chunks = [];
   for (var ci = 0; ci < allData.length; ci += CHUNK) chunks.push(allData.slice(ci, ci+CHUNK));
-  var totalInserted = 0, totalFailed = 0, chunkIdx = 0;
+  var totalInserted = 0, totalFailed = 0, chunkIdx = 0, retryCount = 0;
 
   function sendChunk() {
     if (chunkIdx >= chunks.length) {
@@ -3155,15 +3171,18 @@ function submitImportRows(pending) {
       return;
     }
     var chunk = chunks[chunkIdx];
-    var sentSoFar = chunkIdx * CHUNK;
+    var sentSoFar = totalInserted;
+    var pct2 = allData.length ? Math.round(sentSoFar/allData.length*100) : 0;
     statusEl.innerHTML = '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;font-size:13px;color:#1D4ED8">'+
-      '⏳ Đang gửi dòng <b>'+(sentSoFar+1)+'–'+(sentSoFar+chunk.length)+'</b> / '+allData.length+' ...</div>';
+      '⏳ Đang gửi <b>'+sentSoFar+'/'+allData.length+'</b> dòng ('+pct2+'%) — batch '+(chunkIdx+1)+'/'+chunks.length+'...</div>';
 
     fetch(GAS_URL, {
       method: 'POST',
       body: JSON.stringify({ action: 'batchAddRows', sheet: memberSheet, rows: chunk })
     }).then(function(r){ return r.json(); })
     .then(function(resp){
+      if (resp.error && retryCount < 2) { retryCount++; setTimeout(sendChunk, 2000); return; }
+      retryCount = 0;
       totalInserted += (resp.inserted || chunk.length);
       totalFailed   += (resp.failed || 0);
       if (resp.ok) {
@@ -3172,15 +3191,17 @@ function submitImportRows(pending) {
         });
       }
       chunkIdx++;
-      sendChunk();
+      setTimeout(sendChunk, 500);
     }).catch(function(){
+      if (retryCount < 2) { retryCount++; setTimeout(sendChunk, 3000); return; }
+      retryCount = 0;
       // Lưu tạm chunk lỗi
       chunk.forEach(function(data){
         addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'pending', data: data, sheet: memberSheet });
       });
       totalFailed += chunk.length;
       chunkIdx++;
-      sendChunk();
+      setTimeout(sendChunk, 500);
     });
   }
 

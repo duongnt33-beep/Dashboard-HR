@@ -112,6 +112,11 @@ body{font-family:'Segoe UI',sans-serif;background:var(--gray4);color:var(--dark1
 .table-card{background:var(--white);border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--gray3);margin-bottom:20px;overflow:hidden}
 .table-card-head{padding:14px 18px;border-bottom:1px solid var(--gray3);display:flex;align-items:center;gap:10px}
 .table-card-head h3{font-size:14px;font-weight:700;color:var(--dark1);flex:1}
+.btn-delete-sel{background:#EF4444;color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:none}
+.btn-delete-sel.active{display:inline-flex;align-items:center;gap:4px}
+.btn-delete-all{background:#7C3AED;color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.delete-confirm-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1F2937;color:#fff;padding:14px 22px;border-radius:12px;display:flex;align-items:center;gap:12px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:13px}
+.cb-row{cursor:pointer;width:16px;height:16px;accent-color:#6366F1}
 .table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
 thead th{background:var(--gray4);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;
@@ -1327,7 +1332,10 @@ function renderNhanVien() {
 
   document.getElementById('pageContent').innerHTML =
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Danh sách nhân viên</h3><span id="nvCount" style="font-size:12px;color:#6B7280"></span></div>'+
+    '<div class="table-card-head"><h3>Danh sách nhân viên</h3><span id="nvCount" style="font-size:12px;color:#6B7280"></span>'+
+    (!isReadOnly()?'<button id="btnDelSel_nv" class="btn-delete-sel" onclick="deleteSelected(\'nv\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'nv\', getNVRows().map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap" id="nvTableWrap"></div>'+
     '<div id="nvPager"></div>'+
     '</div>';
@@ -1355,17 +1363,20 @@ function renderNVTable() {
     {key:'trangThai',label:'Trạng thái'},{key:'gioiTinh',label:'GT'},{key:'dienThoai',label:'Điện thoại'},
     {key:'loaiHD',label:'Loại HĐ'},
   ];
-  var html = '<table><thead><tr>'+cols.map(function(c){ return '<th>'+c.label+'</th>'; }).join('')+'<th>Thao tác</th></tr></thead><tbody>';
-  if (!page.length) { html += '<tr class="empty-row"><td colspan="'+(cols.length+1)+'">Không có dữ liệu</td></tr>'; }
+  var ro = isReadOnly();
+  var cbHead = ro ? '' : '<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'nv\',this.checked)" title="Chọn tất cả"></th>';
+  var html = '<table><thead><tr>'+cbHead+cols.map(function(c){ return '<th>'+c.label+'</th>'; }).join('')+'<th>Thao tác</th></tr></thead><tbody>';
+  if (!page.length) { html += '<tr class="empty-row"><td colspan="'+(cols.length+(ro?1:2))+'">Không có dữ liệu</td></tr>'; }
   page.forEach(function(r) {
     html += '<tr>';
+    if (!ro) html += '<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'nv\')"></td>';
     cols.forEach(function(c) {
       if (c.key === 'trangThai') html += '<td>'+statusBadge(r[c.key])+'</td>';
       else html += '<td>'+esc(r[c.key]||'')+'</td>';
     });
     html += '<td>'+
       '<button class="btn btn-secondary btn-sm" onclick="viewNV(\''+esc(r.maNV)+'\')">👁</button> '+
-      (!isReadOnly()?'<button class="btn btn-primary btn-sm" onclick="editNV(\''+esc(r.maNV)+'\')">✏️</button> ':'')+'</td>';
+      (!ro?'<button class="btn btn-primary btn-sm" onclick="editNV(\''+esc(r.maNV)+'\')">✏️</button> ':'')+'</td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
@@ -1562,9 +1573,13 @@ function renderHopDong() {
       kpiCard('HĐ sắp hết hạn','red',expire60.length,'⏰','trong 60 ngày')+
     '</div>'+
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Danh sách hợp đồng</h3></div>'+
+    '<div class="table-card-head"><h3>Danh sách hợp đồng</h3>'+
+    (!isReadOnly()?'<button id="btnDelSel_hd" class="btn-delete-sel" onclick="deleteSelected(\'hd\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'hd\', FDATA.map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Loại HĐ</th>'+
+    '<table><thead><tr>'+(!isReadOnly()?'<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'hd\',this.checked)"></th>':'')+
+    '<th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Loại HĐ</th>'+
     '<th>Ngày ký HĐ hiện tại</th><th>Ngày HH HĐLĐ L1</th><th>Ngày HH HĐTV</th><th>Check HĐ</th><th>Thao tác</th></tr></thead><tbody>'+
     DATA.map(function(r) {
       var warning = '';
@@ -1577,7 +1592,8 @@ function renderHopDong() {
           else if (diff>=0 && diff<=60) warning = ' 🔔';
         }
       }
-      return '<tr><td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
+      return '<tr>'+(!isReadOnly()?'<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'hd\')"></td>':'')+
+        '<td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
         '<td>'+esc(r.loaiHD||'—')+'</td><td>'+esc(r.ngayKyHDHienTai||'—')+'</td>'+
         '<td>'+esc(r.ngayHetHanHDLD_L1||'—')+warning+'</td>'+
         '<td>'+esc(r.ngayHetHanHDTV||'—')+'</td>'+
@@ -1603,15 +1619,20 @@ function renderNghiViec() {
       kpiCard('Chưa bàn giao','blue',resigned.filter(function(r){ return !r.bienBanBanGiao; }).length,'📋','')+
     '</div>'+
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Danh sách nhân viên thôi việc</h3></div>'+
+    '<div class="table-card-head"><h3>Danh sách nhân viên thôi việc</h3>'+
+    (!isReadOnly()?'<button id="btnDelSel_nghi" class="btn-delete-sel" onclick="deleteSelected(\'nghi\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'nghi\', getResigned().map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Phòng ban</th><th>Ngày thôi việc</th><th>Lý do</th><th>Đơn TV</th><th>BB bàn giao</th><th>Thao tác</th></tr></thead><tbody>'+
+    '<table><thead><tr>'+(!isReadOnly()?'<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'nghi\',this.checked)"></th>':'')+
+    '<th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Phòng ban</th><th>Ngày thôi việc</th><th>Lý do</th><th>Đơn TV</th><th>BB bàn giao</th><th>Thao tác</th></tr></thead><tbody>'+
     (resigned.length?resigned.map(function(r){
-      return '<tr><td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td><td>'+esc(r.phongBan||'—')+'</td>'+
+      return '<tr>'+(!isReadOnly()?'<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'nghi\')"></td>':'')+
+        '<td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td><td>'+esc(r.phongBan||'—')+'</td>'+
         '<td>'+esc(r.ngayThoiViecThucTe||'—')+'</td><td>'+esc(r.lyDoThoiViec||'—')+'</td>'+
         '<td>'+(r.donThoiViec?'✅':'❌')+'</td><td>'+(r.bienBanBanGiao?'✅':'❌')+'</td>'+
         '<td>'+(!isReadOnly()?'<button class="btn btn-primary btn-sm" onclick="editNV(\''+esc(r.maNV)+'\')">✏️</button>':'')+'</td></tr>';
-    }).join(''):'<tr class="empty-row"><td colspan="9">Không có dữ liệu</td></tr>')+
+    }).join(''):'<tr class="empty-row"><td colspan="'+(isReadOnly()?9:10)+'">Không có dữ liệu</td></tr>')+
     '</tbody></table></div></div>';
 }
 
@@ -1632,11 +1653,16 @@ function renderLuong() {
       kpiCard('NV có TK NH','orange',active.filter(function(r){ return r.soTaiKhoan; }).length,'🏦','')+
     '</div>'+
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Danh sách lương nhân viên</h3></div>'+
+    '<div class="table-card-head"><h3>Danh sách lương nhân viên</h3>'+
+    (!isReadOnly()?'<button id="btnDelSel_luong" class="btn-delete-sel" onclick="deleteSelected(\'luong\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'luong\', getActive().map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Lương CB</th><th>Tổng TN</th><th>Tài khoản NH</th><th>Ngân hàng</th><th>Thao tác</th></tr></thead><tbody>'+
+    '<table><thead><tr>'+(!isReadOnly()?'<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'luong\',this.checked)"></th>':'')+
+    '<th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Lương CB</th><th>Tổng TN</th><th>Tài khoản NH</th><th>Ngân hàng</th><th>Thao tác</th></tr></thead><tbody>'+
     active.map(function(r){
-      return '<tr><td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
+      return '<tr>'+(!isReadOnly()?'<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'luong\')"></td>':'')+
+        '<td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
         '<td>'+fmtNum(r.luongCoBan)+'</td><td>'+fmtNum(r.tongThuNhap)+'</td>'+
         '<td>'+esc(r.soTaiKhoan||'—')+'</td><td>'+esc(r.nganHang||'—')+'</td>'+
         '<td>'+(!isReadOnly()?'<button class="btn btn-primary btn-sm" onclick="editNV(\''+esc(r.maNV)+'\')">✏️</button>':'')+'</td></tr>';
@@ -1658,11 +1684,16 @@ function renderBaoHiem() {
       kpiCard('Tổng BHXH NLĐ','green',fmtNum(Math.round(active.reduce(function(s,r){ return s+(parseFloat(r.bhxhNLD)||0); },0)/1000000))+'tr','💰','')+
     '</div>'+
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Bảo hiểm xã hội nhân viên</h3></div>'+
+    '<div class="table-card-head"><h3>Bảo hiểm xã hội nhân viên</h3>'+
+    (!isReadOnly()?'<button id="btnDelSel_bh" class="btn-delete-sel" onclick="deleteSelected(\'bh\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'bh\', getActive().map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Mã BHXH</th><th>Công đoàn</th><th>Ngày tham gia CĐ</th><th>BHXH NLĐ</th><th>Thao tác</th></tr></thead><tbody>'+
+    '<table><thead><tr>'+(!isReadOnly()?'<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'bh\',this.checked)"></th>':'')+
+    '<th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Mã BHXH</th><th>Công đoàn</th><th>Ngày tham gia CĐ</th><th>BHXH NLĐ</th><th>Thao tác</th></tr></thead><tbody>'+
     active.map(function(r){
-      return '<tr><td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
+      return '<tr>'+(!isReadOnly()?'<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'bh\')"></td>':'')+
+        '<td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
         '<td>'+esc(r.maSoBHXH||'—')+'</td><td>'+(r.congDoan==='Có'?'✅ Có':'❌')+'</td>'+
         '<td>'+esc(r.ngayThamGiaCongDoan||'—')+'</td><td>'+fmtNum(r.bhxhNLD)+'</td>'+
         '<td>'+(!isReadOnly()?'<button class="btn btn-primary btn-sm" onclick="editNV(\''+esc(r.maNV)+'\')">✏️</button>':'')+'</td></tr>';
@@ -1685,11 +1716,16 @@ function renderThue() {
       kpiCard('Tổng thuế TNCN','green',fmtNum(Math.round(tongThue/1000000))+'tr','📊','')+
     '</div>'+
     '<div class="table-card">'+
-    '<div class="table-card-head"><h3>Thuế thu nhập cá nhân</h3></div>'+
+    '<div class="table-card-head"><h3>Thuế thu nhập cá nhân</h3>'+
+    (!isReadOnly()?'<button id="btnDelSel_thue" class="btn-delete-sel" onclick="deleteSelected(\'thue\')">🗑 Xóa đã chọn</button>'+
+    '<button class="btn-delete-all" onclick="deleteAll(\'thue\', getActive().map(function(r){return r.maNV;}))">🗑 Xóa tất cả</button>':'')+
+    '</div>'+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Mã số thuế</th><th>Người PT</th><th>Giảm trừ</th><th>Thuế suất</th><th>Thuế TNCN</th><th>Thao tác</th></tr></thead><tbody>'+
+    '<table><thead><tr>'+(!isReadOnly()?'<th><input type="checkbox" class="cb-row" onchange="toggleSelectAll(\'thue\',this.checked)"></th>':'')+
+    '<th>Mã NV</th><th>Họ tên</th><th>Khối</th><th>Mã số thuế</th><th>Người PT</th><th>Giảm trừ</th><th>Thuế suất</th><th>Thuế TNCN</th><th>Thao tác</th></tr></thead><tbody>'+
     active.map(function(r){
-      return '<tr><td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
+      return '<tr>'+(!isReadOnly()?'<td><input type="checkbox" class="cb-row" data-id="'+esc(r.maNV)+'" onchange="onRowCheck(\'thue\')"></td>':'')+
+        '<td>'+esc(r.maNV)+'</td><td>'+esc(r.hoTen)+'</td><td>'+esc(r.khoi)+'</td>'+
         '<td>'+esc(r.maSoThue||'—')+'</td><td>'+esc(r.soNguoiPhuThuoc||0)+'</td>'+
         '<td>'+esc(r.khaiBaoGiamTru||'—')+'</td><td>'+esc(r.thueSuat||'—')+'</td>'+
         '<td>'+fmtNum(r.thueTNCN)+'</td>'+
@@ -2449,6 +2485,94 @@ function confirmDeleteUser(idx) {
     lsSave(LS_USERS_KEY, localUsers);
     renderUserList();
     showToast('Đã xóa (offline)','info');
+  });
+}
+
+// ============================================================
+// BULK DELETE (xóa theo lựa chọn / xóa tất cả)
+// ============================================================
+var _deleteModule = '';
+var _deleteKeys = [];  // maNV list to delete
+
+function _getDeleteBar() { return document.getElementById('bulkDeleteBar'); }
+
+function _removeBulkBar() {
+  var b = _getDeleteBar(); if (b) b.remove();
+}
+
+function _updateSelBtn(module) {
+  var btn = document.getElementById('btnDelSel_' + module);
+  if (!btn) return;
+  var cbs = document.querySelectorAll('.cb-row:checked');
+  if (cbs.length > 0) {
+    btn.classList.add('active');
+    btn.textContent = '🗑 Xóa đã chọn (' + cbs.length + ')';
+  } else {
+    btn.classList.remove('active');
+    btn.textContent = '🗑 Xóa đã chọn';
+  }
+}
+
+function toggleSelectAll(module, chk) {
+  var cbs = document.querySelectorAll('.cb-row');
+  cbs.forEach(function(c){ c.checked = chk; });
+  _updateSelBtn(module);
+}
+
+function onRowCheck(module) { _updateSelBtn(module); }
+
+function deleteSelected(module) {
+  var cbs = document.querySelectorAll('.cb-row:checked');
+  if (!cbs.length) { showToast('Chưa chọn bản ghi nào','info'); return; }
+  var keys = Array.from(cbs).map(function(c){ return c.dataset.id; });
+  _confirmDelete(module, keys, false);
+}
+
+function deleteAll(module, keys) {
+  if (!keys || !keys.length) { showToast('Không có dữ liệu để xóa','info'); return; }
+  _confirmDelete(module, keys, true);
+}
+
+function _confirmDelete(module, keys, isAll) {
+  _removeBulkBar();
+  _deleteModule = module;
+  _deleteKeys = keys;
+  var bar = document.createElement('div');
+  bar.id = 'bulkDeleteBar';
+  bar.className = 'delete-confirm-bar';
+  bar.innerHTML =
+    '<span>⚠️ ' + (isAll ? 'Xóa tất cả <b>' + keys.length + '</b> bản ghi?' : 'Xóa <b>' + keys.length + '</b> bản ghi đã chọn?') + '</span>'+
+    '<button onclick="_execBulkDelete()" style="background:#EF4444;color:#fff;border:none;padding:7px 18px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px">Xóa</button>'+
+    '<button onclick="_removeBulkBar()" style="background:#374151;color:#fff;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px">Hủy</button>';
+  document.body.appendChild(bar);
+}
+
+function _execBulkDelete() {
+  _removeBulkBar();
+  var keys = _deleteKeys.slice();
+  var module = _deleteModule;
+  if (!keys.length) return;
+  showToast('Đang xóa ' + keys.length + ' bản ghi...', 'info');
+
+  // Remove from DATA + FDATA in memory
+  DATA = DATA.filter(function(r){ return keys.indexOf(r.maNV) < 0; });
+  applyFilters();
+
+  // Call GAS to delete each row
+  var promises = keys.map(function(maNV) {
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'deleteRow', maNV: maNV })
+    }).then(function(r){ return r.json(); }).catch(function(){ return { ok: false }; });
+  });
+
+  Promise.all(promises).then(function(results) {
+    var failed = results.filter(function(r){ return !r.ok; }).length;
+    if (failed === 0) showToast('Đã xóa ' + keys.length + ' bản ghi', 'success');
+    else showToast('Xóa xong, ' + failed + ' lỗi (đã cập nhật bộ nhớ)', 'info');
+    // Re-render current module
+    navTo(curModule);
   });
 }
 

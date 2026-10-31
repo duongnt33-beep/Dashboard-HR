@@ -1931,19 +1931,34 @@ function doImport() {
     document.getElementById('importPreview').innerHTML = '';
     return;
   }
-  showLoading('Đang nhập '+importRows.length+' dòng...');
-  var payload = {action:'batchImport', items: importRows.map(function(r){ r.nguoiNhap=CU.username; return r; })};
-  fetch(GAS_URL, {method:'POST', body:JSON.stringify(payload)})
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
+  var allItems = importRows.map(function(r){ r.nguoiNhap=CU.username; return r; });
+  var CHUNK2 = 50;
+  var chunks2 = [];
+  for (var ci2 = 0; ci2 < allItems.length; ci2 += CHUNK2) chunks2.push(allItems.slice(ci2, ci2+CHUNK2));
+  var doneCount = 0, chunkIdx2 = 0;
+  showLoading('Đang nhập '+allItems.length+' dòng (0/'+chunks2.length+' batch)...');
+
+  function sendImportChunk() {
+    if (chunkIdx2 >= chunks2.length) {
       hideLoading();
-      if (d.error) { showToast('Lỗi: '+d.error,'error'); return; }
-      showToast('Đã nhập '+d.count+' dòng thành công','success');
+      showToast('Đã nhập '+doneCount+'/'+allItems.length+' dòng thành công','success');
       importRows = [];
       document.getElementById('importPreview').innerHTML = '';
       loadData();
-    })
-    .catch(function(e){ hideLoading(); showToast('Lỗi: '+e.message,'error'); });
+      return;
+    }
+    var chunk2 = chunks2[chunkIdx2];
+    showLoading('Đang nhập batch '+(chunkIdx2+1)+'/'+chunks2.length+' ('+doneCount+'/'+allItems.length+' dòng)...');
+    fetch(GAS_URL, {method:'POST', body:JSON.stringify({action:'batchImport', items: chunk2})})
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        doneCount += (d.count || chunk2.length);
+        chunkIdx2++;
+        sendImportChunk();
+      })
+      .catch(function(e){ hideLoading(); showToast('Lỗi batch '+(chunkIdx2+1)+': '+e.message,'error'); });
+  }
+  sendImportChunk();
 }
 
 async function downloadTemplate() {
@@ -3110,9 +3125,6 @@ function submitImportRows(pending) {
   var memberSheet = pending.sheet;
   var statusEl = document.getElementById('import_status');
 
-  statusEl.innerHTML = '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;font-size:13px;color:#1D4ED8">'+
-    '⏳ Đang gửi <b>'+rows.length+'</b> dòng lên Google Sheets...</div>';
-
   // Chuẩn bị tất cả rows
   var allData = rows.map(function(r) {
     var data = {};
@@ -3127,30 +3139,52 @@ function submitImportRows(pending) {
     return data;
   });
 
-  // Gửi 1 request batch thay vì từng dòng
-  fetch(GAS_URL, {
-    method: 'POST',
-    body: JSON.stringify({ action: 'batchAddRows', sheet: memberSheet, rows: allData })
-  }).then(function(r){ return r.json(); })
-  .then(function(resp){
-    var inserted = resp.inserted || allData.length;
-    var failed = resp.failed || 0;
-    if (resp.ok) {
-      allData.forEach(function(data){
-        addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'ok' });
-      });
+  // Chia nhỏ batch 50 rows để tránh GAS timeout
+  var CHUNK = 50;
+  var chunks = [];
+  for (var ci = 0; ci < allData.length; ci += CHUNK) chunks.push(allData.slice(ci, ci+CHUNK));
+  var totalInserted = 0, totalFailed = 0, chunkIdx = 0;
+
+  function sendChunk() {
+    if (chunkIdx >= chunks.length) {
+      // Xong tất cả
+      var msg = '✅ Đã gửi <b>'+totalInserted+'</b>/'+allData.length+' dòng thành công';
+      if (totalFailed) msg += ' · <span style="color:#EF4444">'+totalFailed+' lỗi</span>';
+      statusEl.innerHTML = '<div style="background:'+(totalFailed?'#FEF3C7':'#F0FDF4')+';border:1px solid '+(totalFailed?'#FCD34D':'#BBF7D0')+';border-radius:8px;padding:12px;font-size:13px">'+msg+'</div>';
+      window.importPendingRows = null;
+      return;
     }
-    var msg = '✅ Đã gửi <b>'+inserted+'</b>/'+allData.length+' dòng thành công';
-    if (failed) msg += ' · <span style="color:#EF4444">'+failed+' lỗi</span>';
-    statusEl.innerHTML = '<div style="background:'+(failed?'#FEF3C7':'#F0FDF4')+';border:1px solid '+(failed?'#FCD34D':'#BBF7D0')+';border-radius:8px;padding:12px;font-size:13px">'+msg+'</div>';
-    window.importPendingRows = null;
-  }).catch(function(){
-    allData.forEach(function(data){
-      addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'pending', data: data, sheet: memberSheet });
+    var chunk = chunks[chunkIdx];
+    var sentSoFar = chunkIdx * CHUNK;
+    statusEl.innerHTML = '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;font-size:13px;color:#1D4ED8">'+
+      '⏳ Đang gửi dòng <b>'+(sentSoFar+1)+'–'+(sentSoFar+chunk.length)+'</b> / '+allData.length+' ...</div>';
+
+    fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'batchAddRows', sheet: memberSheet, rows: chunk })
+    }).then(function(r){ return r.json(); })
+    .then(function(resp){
+      totalInserted += (resp.inserted || chunk.length);
+      totalFailed   += (resp.failed || 0);
+      if (resp.ok) {
+        chunk.forEach(function(data){
+          addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'ok' });
+        });
+      }
+      chunkIdx++;
+      sendChunk();
+    }).catch(function(){
+      // Lưu tạm chunk lỗi
+      chunk.forEach(function(data){
+        addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'pending', data: data, sheet: memberSheet });
+      });
+      totalFailed += chunk.length;
+      chunkIdx++;
+      sendChunk();
     });
-    statusEl.innerHTML = '<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px;font-size:13px">⚠️ Lỗi mạng — đã lưu tạm, sẽ gửi lại sau.</div>';
-    window.importPendingRows = null;
-  });
+  }
+
+  sendChunk();
 }
 
 function renderDeFields(area) {

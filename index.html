@@ -3006,11 +3006,11 @@ function doImportExcel(file, statusEl) {
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
-      var wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
+      var wb = XLSX.read(e.target.result, { type: 'binary', cellDates: false });
       // Ưu tiên đọc sheet "Dữ liệu", nếu không có thì đọc sheet đầu tiên
       var dataSheetName = wb.SheetNames.find(function(n){ return n.trim() === 'Dữ liệu'; }) || wb.SheetNames[0];
       var ws = wb.Sheets[dataSheetName];
-      var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      var rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
 
       if (!rows.length) {
         statusEl.innerHTML = '<div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:12px;font-size:13px;color:#991B1B">❌ File không có dữ liệu (từ dòng 2 trở đi)</div>';
@@ -3142,11 +3142,27 @@ function submitImportRows(pending) {
   var statusEl = document.getElementById('import_status');
 
   // Chuẩn bị tất cả rows
+  function _fmtDateVN(v) {
+    // Nếu là Date object → dd/mm/yyyy
+    if (v instanceof Date && !isNaN(v)) {
+      var d = v.getDate(), m = v.getMonth()+1, y = v.getFullYear();
+      return (d<10?'0':'')+d+'/'+(m<10?'0':'')+m+'/'+y;
+    }
+    // Nếu là ISO string 2017-05-06... → dd/mm/yyyy
+    var s = String(v||'').trim();
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[3]+'/'+iso[2]+'/'+iso[1];
+    return s;
+  }
   var allData = rows.map(function(r) {
     var data = {};
     Object.keys(r).forEach(function(k){
       var v = r[k];
-      if (v instanceof Date) v = v.toLocaleDateString('vi-VN');
+      // Cột ngày: chứa "ngày","date","Ngày" trong key hoặc giá trị có dạng ISO
+      var lk = k.toLowerCase();
+      if (v instanceof Date || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v))) {
+        v = _fmtDateVN(v);
+      }
       data[k] = String(v||'').trim();
     });
     if (data['Công ty'] && !data['Công ty đang làm việc hiện tại']) {
@@ -3179,9 +3195,18 @@ function submitImportRows(pending) {
     fetch(GAS_URL, {
       method: 'POST',
       body: JSON.stringify({ action: 'batchAddRows', sheet: memberSheet, rows: chunk })
-    }).then(function(r){ return r.json(); })
+    }).then(function(r){
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
     .then(function(resp){
-      if (resp.error && retryCount < 2) { retryCount++; setTimeout(sendChunk, 2000); return; }
+      if (resp.error) {
+        if (retryCount < 2) { retryCount++; setTimeout(sendChunk, 2000); return; }
+        // Hiện lỗi GAS cụ thể
+        statusEl.innerHTML = '<div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:12px;font-size:13px;color:#991B1B">'+
+          '❌ Lỗi GAS tại batch '+(chunkIdx+1)+': <b>'+esc(resp.error)+'</b><br>Đã gửi thành công: '+totalInserted+'/'+allData.length+' dòng</div>';
+        window.importPendingRows = null; return;
+      }
       retryCount = 0;
       totalInserted += (resp.inserted || chunk.length);
       totalFailed   += (resp.failed || 0);
@@ -3192,16 +3217,16 @@ function submitImportRows(pending) {
       }
       chunkIdx++;
       setTimeout(sendChunk, 500);
-    }).catch(function(){
+    }).catch(function(err){
       if (retryCount < 2) { retryCount++; setTimeout(sendChunk, 3000); return; }
       retryCount = 0;
-      // Lưu tạm chunk lỗi
+      statusEl.innerHTML = '<div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:12px;font-size:13px;color:#991B1B">'+
+        '❌ Lỗi tại batch '+(chunkIdx+1)+'/'+chunks.length+': <b>'+(err&&err.message?esc(err.message):'Mất kết nối GAS')+'</b><br>'+
+        'Đã gửi: <b>'+totalInserted+'</b>/'+allData.length+' dòng. Thử lại sau.</div>';
       chunk.forEach(function(data){
         addHistory({ time: new Date().toISOString(), area: pending.area, congTy: data['Công ty']||'', maNV: data['Mã NV']||'', hoTen: data['Họ và tên']||'', user: CU.username, status:'pending', data: data, sheet: memberSheet });
       });
-      totalFailed += chunk.length;
-      chunkIdx++;
-      setTimeout(sendChunk, 500);
+      window.importPendingRows = null;
     });
   }
 
